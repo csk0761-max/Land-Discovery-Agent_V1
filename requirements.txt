@@ -1,0 +1,8 @@
+google-genai
+fastapi
+uvicorn
+pydantic
+geopy
+overpy
+earthengine-api
+python-dotenv
