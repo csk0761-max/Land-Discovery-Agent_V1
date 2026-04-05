@@ -1,0 +1,53 @@
+# Land Discovery Agent
+
+The Land Discovery Agent is a powerful tool for discovering and analyzing land parcels using AI and Geospatial data. It consists of a Fastapi/Python backend that drives the AI agents and tools, and a React-based frontend for the user interface.
+
+## Project Structure
+
+- `frontend/`: The React application providing the map and UI.
+- `main.py` / `api.py`: FastAPI endpoints that interact with the AI agents.
+- `*_agent.py` & `*_tools.py`: AI Agent implementations and their respective tools.
+
+## Setup Instructions
+
+### Environment Variables
+
+You need to provide API keys for the AI agent to function properly. 
+
+1. Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+2. Open `.env` and fill in your actual API keys (e.g., `GEMINI_API_KEY`).
+
+### Running the Backend
+
+The backend is built in Python. Note that it depends on Earth Engine and other geospatial APIs. To run it:
+
+1. Ensure you have the required dependencies (consider creating a `venv`):
+```bash
+pip install -r requirements.txt
+```
+2. Start the API server:
+```bash
+uvicorn api:app --reload
+```
+
+### Running the Frontend
+
+The React UI is built with Vite.
+
+1. In a new terminal, navigate to the `frontend` directory:
+```bash
+cd frontend
+```
+2. Install dependencies:
+```bash
+npm install
+```
+3. Run the development server:
+```bash
+npm run dev
+```
+
+The frontend will typically be accessible at `http://localhost:5173` and the backend at `http://localhost:8000`.
