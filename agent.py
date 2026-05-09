@@ -22,8 +22,28 @@ from jsonschema import validate, ValidationError
 
 
 load_dotenv()
-# Configure Clients
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+# Configure Clients — initialized lazily so the service can start without the key present.
+_openai_client: OpenAI = None
+
+def _get_openai_client() -> OpenAI:
+    """Return a cached OpenAI client, initializing it lazily on first use.
+
+    Deferring initialization until the key is actually needed allows the
+    service to start successfully even when OPENAI_API_KEY has not been
+    injected into the environment yet (e.g. during a cold Railway deploy
+    before secrets are propagated).
+    """
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Please configure it in your Railway service variables."
+            )
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 # GEE/Gemini setup (Optional fallback)
 gemini_api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -483,7 +503,7 @@ def distill_report_into_insights(report_text: str, context: dict):
             Return a JSON list of strings. Example: ["Insight 1", "Insight 2"]
         """)
         
-        response = client.chat.completions.create(
+        response = _get_openai_client().chat.completions.create(
             model='gpt-4o-mini',
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
@@ -717,7 +737,7 @@ def agent_evaluate_parcel(
 
     try:
         print(f"Agent: Finalizing structured report with OpenAI GPT-4o-mini...")
-        response = client.chat.completions.create(
+        response = _get_openai_client().chat.completions.create(
             model='gpt-4o-mini',
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
