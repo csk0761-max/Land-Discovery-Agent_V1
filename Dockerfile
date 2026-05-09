@@ -25,4 +25,4 @@ COPY . /app/
 EXPOSE 8000
 
 # Start the application using gunicorn for production
-CMD gunicorn -w 4 -k uvicorn.workers.UvicornWorker api:app --bind "0.0.0.0:${PORT:-8000}"
+CMD ["sh", "-c", "gunicorn -w 4 -k uvicorn.workers.UvicornWorker api:app --bind 0.0.0.0:$PORT"]
