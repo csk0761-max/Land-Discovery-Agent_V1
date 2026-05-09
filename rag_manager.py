@@ -12,7 +12,27 @@ from services.supabase_service import supabase_service
 
 load_dotenv()
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+_openai_client: OpenAI = None
+
+def _get_openai_client() -> OpenAI:
+    """Return a cached OpenAI client, initializing it lazily on first use.
+
+    Deferring initialization until the key is actually needed allows the
+    service to start successfully even when OPENAI_API_KEY has not been
+    injected into the environment yet (e.g. during a cold Railway deploy
+    before secrets are propagated).
+    """
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Please configure it in your Railway service variables."
+            )
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
 EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_DB_PATH = "rag_store.sqlite3"
 DEFAULT_LEGACY_DB_FILE = "rag_db.json"
@@ -172,7 +192,7 @@ def _initialize_db():
 
 def get_embedding(text: str) -> List[float]:
     try:
-        response = client.embeddings.create(
+        response = _get_openai_client().embeddings.create(
             model=EMBEDDING_MODEL,
             input=text,
         )

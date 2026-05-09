@@ -22,7 +22,28 @@ import rag_manager
 import os
 from dotenv import load_dotenv
 load_dotenv()
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+# Client initialized lazily so the service can start without the key present.
+_openai_client: OpenAI = None
+
+def _get_openai_client() -> OpenAI:
+    """Return a cached OpenAI client, initializing it lazily on first use.
+
+    Deferring initialization until the key is actually needed allows the
+    service to start successfully even when OPENAI_API_KEY has not been
+    injected into the environment yet (e.g. during a cold Railway deploy
+    before secrets are propagated).
+    """
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Please configure it in your Railway service variables."
+            )
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 # Canonical spelling map for Indian states — covers all common misspellings/abbreviations
 _STATE_CANONICAL = {
@@ -404,7 +425,7 @@ Be highly specific, data-driven, and professional. Use clean Markdown tables and
                 if attempt > 0:
                     print(f"Agent: Retrying report generation (attempt {attempt+1}/{max_retries})...")
 
-                response = client.chat.completions.create(
+                response = _get_openai_client().chat.completions.create(
                     model='gpt-4o-mini',
                     messages=[{"role": "user", "content": prompt}],
                 )
