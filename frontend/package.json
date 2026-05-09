@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "cd .. && git checkout main && git merge development && git push origin main && git checkout development"
   },
   "dependencies": {
     "@tmcw/togeojson": "^7.1.2",
