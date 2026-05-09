@@ -1,5 +1,5 @@
 import os
-from google import genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # Import our custom Earth Engine tools
@@ -8,11 +8,8 @@ from tools import get_region_slope, get_land_cover_details
 # Load environment variables
 load_dotenv()
 
-# Configure Google GenAI Client
-import os
-from dotenv import load_dotenv
-load_dotenv()
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# Configure OpenAI Client
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 def agent_evaluate_parcel(lat: float, lon: float, area_acres: float) -> str:
@@ -32,8 +29,8 @@ def agent_evaluate_parcel(lat: float, lon: float, area_acres: float) -> str:
     except Exception as e:
         return f"Error connecting to Google Earth Engine: {e}"
 
-    # 2. Analyze using Gemini
-    print(f"\nAgent: All GIS data acquired. Analyzing {area_acres} acres with Gemini AI...")
+    # 2. Analyze using OpenAI
+    print(f"\nAgent: All GIS data acquired. Analyzing {area_acres} acres with OpenAI...")
     prompt = f"""
     You are an expert Land Discovery and GIS Agent. Your task is to interpret GIS outputs for a specific land parcel and evaluate its suitability for a Solar Project.
 
@@ -58,12 +55,40 @@ def agent_evaluate_parcel(lat: float, lon: float, area_acres: float) -> str:
     """
     
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        return response.text
+        import time
+        max_retries = 4
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    print(f"Agent: Retrying report generation (attempt {attempt+1}/{max_retries})...")
+
+                response = client.chat.completions.create(
+                    model='gpt-4o-mini',
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                err_str = str(e)
+                if ("503" in err_str or "429" in err_str) and attempt < max_retries - 1:
+                    import re
+                    match = re.search(r'retry in (\d+(?:\.\d+)?)s', err_str)
+                    wait_time = int(float(match.group(1))) + 2 if match else 3 ** attempt
+                    if wait_time > 15:
+                        raise e
+                    print(f"OpenAI API error ({err_str[:40]}), retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise e
     except Exception as e:
+        import re
+        err_str = str(e)
+        if "429" in err_str:
+            match = re.search(r'retry in (\d+(?:\.\d+)?)s', err_str)
+            delay = int(float(match.group(1))) + 1 if match else 60
+            return f"### ⏳ OpenAI API Rate Limit Reached\n\nThe AI provider's free-tier token quota has momentarily been exceeded. \n\n**Action required: Please wait ~{delay} seconds** and click Analyze again."
+        elif "503" in err_str:
+            return f"### 🌐 OpenAI API Server Overloaded\n\nThe OpenAI backend servers are currently experiencing global high demand (503 error).\n\nSpikes are usually temporary. **Action required: Please wait 10-20 seconds** and click Analyze again."
         return f"Error generating report: {e}"
 
 if __name__ == "__main__":

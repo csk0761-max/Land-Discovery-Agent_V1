@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./rag_db.json:/app/rag_db.json
+      - ./rag_store.sqlite3:/app/rag_store.sqlite3
+    restart: always
+
+# Note: In production, you would typically use a separate database service 
+# and a reverse proxy (like Nginx/Traefik) for SSL termination.

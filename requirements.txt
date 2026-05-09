@@ -1,4 +1,4 @@
-google-genai
+openai
 fastapi
 uvicorn
 pydantic
@@ -6,3 +6,12 @@ geopy
 overpy
 earthengine-api
 python-dotenv
+pillow
+opencv-python-headless
+pytest
+gunicorn
+crewai
+langchain-openai
+supabase
+python-multipart
+jsonschema

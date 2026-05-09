@@ -30,6 +30,9 @@ venv/
 
 # Application Specific Data
 rag_db.json
+rag_store.sqlite3
+rag_store.sqlite3-shm
+rag_store.sqlite3-wal
 output.txt
 advanced_agent_output.md
 agent_output.md
@@ -43,3 +46,6 @@ test_response.json
 
 # OS Data
 .DS_Store
+venv*/
+*_output.txt
+scratch/

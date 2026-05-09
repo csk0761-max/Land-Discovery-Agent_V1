@@ -1,8 +1,8 @@
 import React from 'react';
 
-export default function Logo({ width = "100%", height = "auto", className = "" }) {
+export default function Logo({ width = "100%", height, className = "" }) {
     return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" width={width} height={height} className={className}>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" width={width} height={height || undefined} className={className}>
             <g transform="translate(10, 10) scale(1.1)">
                 {/* Top Left Blue */}
                 <path d="M 95 95 L 95 0 A 95 95 0 0 0 0 95 Z" fill="#006cb5" />

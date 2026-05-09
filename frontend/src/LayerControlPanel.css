@@ -1,5 +1,5 @@
 .layer-panel {
-    padding: 1rem 1.25rem;
+    padding: 0.9rem 1rem;
 }
 
 .layer-panel-header {
@@ -55,18 +55,18 @@
 }
 
 .layer-list {
-    margin-top: 0.75rem;
+    margin-top: 0.7rem;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.35rem;
     animation: fadeIn 0.2s ease;
 }
 
 .layer-list-hint {
-    font-size: 0.77rem;
+    font-size: 0.76rem;
     color: var(--text-muted);
-    margin-bottom: 0.5rem;
-    line-height: 1.5;
+    margin-bottom: 0.45rem;
+    line-height: 1.45;
 }
 
 /* Layer item wrapper — holds row + thumbnail */
@@ -75,7 +75,7 @@
     flex-direction: column;
     border-radius: 8px;
     border: 1px solid transparent;
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--card-bg);
     transition: all 0.2s;
     overflow: hidden;
 }
@@ -100,7 +100,7 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 0.55rem 0.75rem;
+    padding: 0.5rem 0.7rem;
 }
 
 .layer-color-chip {
@@ -120,7 +120,7 @@
 }
 
 .layer-name {
-    font-size: 0.85rem;
+    font-size: 0.83rem;
     font-weight: 600;
     color: var(--text-main);
     white-space: nowrap;
@@ -129,7 +129,7 @@
 }
 
 .layer-desc {
-    font-size: 0.72rem;
+    font-size: 0.71rem;
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
@@ -154,7 +154,7 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--text-muted);
     border-radius: 6px;
     cursor: pointer;
     display: flex;
@@ -187,7 +187,7 @@
     width: 28px;
     height: 28px;
     background: transparent;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--text-muted);
     border-radius: 6px;
     cursor: pointer;
     display: flex;
@@ -199,7 +199,7 @@
 }
 
 .layer-toggle-btn:hover:not(:disabled) {
-    background: #f1f5f9;
+    background: var(--text-main);
     color: var(--text-main);
     border-color: var(--primary);
 }
@@ -219,7 +219,7 @@
 .layer-thumbnail-preview {
     border-top: 1px solid rgba(57, 149, 102, 0.2);
     background: #f8fafb;
-    padding: 0.6rem 0.75rem;
+    padding: 0.55rem 0.7rem;
 }
 
 .thumb-header {

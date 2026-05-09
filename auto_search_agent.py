@@ -9,7 +9,7 @@ Orchestrates the Auto Search Land with AI pipeline:
 import requests
 import math
 import datetime
-from google import genai
+from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor
 from auto_search_tools import (
     score_search_area,
@@ -22,70 +22,199 @@ import rag_manager
 import os
 from dotenv import load_dotenv
 load_dotenv()
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def _get_nominatim_bounds(state: str, district: str = None):
+# Canonical spelling map for Indian states — covers all common misspellings/abbreviations
+_STATE_CANONICAL = {
+    # Chhattisgarh variants
+    "chhattisgarh": "Chhattisgarh", "chhatisgarh": "Chhattisgarh",
+    "chattisgarh": "Chhattisgarh", "chatisgarh": "Chhattisgarh",
+    "chhattisghar": "Chhattisgarh", "cg": "Chhattisgarh",
+    # Rajasthan
+    "rajasthan": "Rajasthan", "rajsthan": "Rajasthan", "raj": "Rajasthan",
+    # Gujarat
+    "gujarat": "Gujarat", "gujrat": "Gujarat", "gj": "Gujarat",
+    # Madhya Pradesh
+    "madhya pradesh": "Madhya Pradesh", "mp": "Madhya Pradesh",
+    "madhya predesh": "Madhya Pradesh", "madhy pradesh": "Madhya Pradesh",
+    # Maharashtra
+    "maharashtra": "Maharashtra", "maharastra": "Maharashtra", "mh": "Maharashtra",
+    # Uttar Pradesh
+    "uttar pradesh": "Uttar Pradesh", "up": "Uttar Pradesh",
+    "uttar predesh": "Uttar Pradesh",
+    # Andhra Pradesh
+    "andhra pradesh": "Andhra Pradesh", "ap": "Andhra Pradesh",
+    "andhra predesh": "Andhra Pradesh",
+    # Telangana
+    "telangana": "Telangana", "telengana": "Telangana", "ts": "Telangana",
+    # Karnataka
+    "karnataka": "Karnataka", "karnatka": "Karnataka", "ka": "Karnataka",
+    # Tamil Nadu
+    "tamil nadu": "Tamil Nadu", "tamilnadu": "Tamil Nadu", "tn": "Tamil Nadu",
+    # Kerala
+    "kerala": "Kerala", "kerela": "Kerala", "kl": "Kerala",
+    # Odisha
+    "odisha": "Odisha", "orissa": "Odisha", "or": "Odisha",
+    # Punjab
+    "punjab": "Punjab", "pb": "Punjab",
+    # Haryana
+    "haryana": "Haryana", "hr": "Haryana",
+    # Jharkhand
+    "jharkhand": "Jharkhand", "jharkand": "Jharkhand", "jh": "Jharkhand",
+    # Bihar
+    "bihar": "Bihar", "br": "Bihar",
+    # West Bengal
+    "west bengal": "West Bengal", "wb": "West Bengal", "bengal": "West Bengal",
+    # Assam
+    "assam": "Assam", "as": "Assam",
+    # Himachal Pradesh
+    "himachal pradesh": "Himachal Pradesh", "hp": "Himachal Pradesh",
+    "himachal": "Himachal Pradesh",
+    # Uttarakhand
+    "uttarakhand": "Uttarakhand", "uttrakhand": "Uttarakhand", "uk": "Uttarakhand",
+    # Goa
+    "goa": "Goa", "ga": "Goa",
+    # Tripura
+    "tripura": "Tripura", "tr": "Tripura",
+    # Meghalaya
+    "meghalaya": "Meghalaya", "ml": "Meghalaya",
+    # Manipur
+    "manipur": "Manipur", "mn": "Manipur",
+    # Nagaland
+    "nagaland": "Nagaland", "nl": "Nagaland",
+    # Mizoram
+    "mizoram": "Mizoram", "mz": "Mizoram",
+    # Arunachal Pradesh
+    "arunachal pradesh": "Arunachal Pradesh", "ar": "Arunachal Pradesh",
+    # Sikkim
+    "sikkim": "Sikkim", "sk": "Sikkim",
+    # Delhi
+    "delhi": "Delhi", "new delhi": "Delhi", "dl": "Delhi",
+    # Jammu and Kashmir
+    "jammu and kashmir": "Jammu and Kashmir", "j&k": "Jammu and Kashmir",
+    "jammu kashmir": "Jammu and Kashmir", "jk": "Jammu and Kashmir",
+    # Ladakh
+    "ladakh": "Ladakh", "la": "Ladakh",
+}
+
+
+def _normalize_state(raw: str) -> str:
+    """Return the canonical Indian state name from user input, handling typos."""
+    normalized = raw.strip().lower()
+    return _STATE_CANONICAL.get(normalized, raw.strip())
+
+
+def _nominatim_query(q: str, structured_params: dict = None) -> dict | None:
     """
-    Queries OSM Nominatim to find the lat, lon, and compute a radius_km
-    for the given state and (optional) district.
+    Fire one Nominatim request and return a parsed result dict, or None.
+    Accepts either free-text `q` or structured params.
     """
-    query_parts = []
-    if district:
-        query_parts.append(district)
-    query_parts.append(state)
-    query_parts.append("India")
-    
-    q = ", ".join(query_parts)
-    print(f"Auto Search Geocoding: {q}")
-    
     url = "https://nominatim.openstreetmap.org/search"
-    params = {
-        'q': q,
-        'format': 'json',
-        'limit': 1
-    }
-    headers = {'User-Agent': 'RenewableEnergyLandDiscoveryAgent/1.0'}
-    
+    headers = {'User-Agent': 'AuxiliumLandDiscoveryAgent/2.0 (contact@auxilium.ai)'}
+
+    if structured_params:
+        params = {**structured_params, 'format': 'json', 'limit': 1, 'addressdetails': 0}
+    else:
+        params = {'q': q, 'format': 'json', 'limit': 1}
+
     try:
-        resp = requests.get(url, params=params, headers=headers)
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         if not data:
             return None
-        
         place = data[0]
         lat = float(place['lat'])
         lon = float(place['lon'])
-        
-        # boundingbox is [south, north, west, east]
-        bbox = [float(x) for x in place['boundingbox']]
-        
-        # calculate rough radius from center to corner
-        # Using simple haversine approximation
-        lat1, lon1 = lat, lon
-        lat2, lon2 = bbox[1], bbox[3] # north, east corner
-        
+        bbox = [float(x) for x in place['boundingbox']]  # [south, north, west, east]
+
         R = 6371.0
-        dlat = math.radians(lat2 - lat1)
-        dlon = math.radians(lon2 - lon1)
+        dlat = math.radians(bbox[1] - lat)
+        dlon = math.radians(bbox[3] - lon)
         a = (math.sin(dlat / 2) ** 2 +
-             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
-        radius_km = R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        
-        # Cap radius to avoid massive GEE queries if they just select a whole state
-        if radius_km > 150:
-            print(f"Capping radius from {radius_km}km to 150km to stay within GEE quotas.")
-            radius_km = 150.0
-            
+             math.cos(math.radians(lat)) * math.cos(math.radians(bbox[1])) * math.sin(dlon / 2) ** 2)
+        radius_km = min(150.0, R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+        if radius_km < 20:
+            radius_km = 20.0  # floor — avoid point-sized search areas
+
         return {
             'lat': lat,
             'lon': lon,
             'radius_km': round(radius_km, 1),
-            'display_name': place.get('display_name', q)
+            'display_name': place.get('display_name', q),
         }
     except Exception as e:
-        print(f"Nominatim error: {e}")
+        print(f"  [Nominatim] Query failed ({q!r}): {e}")
         return None
+
+
+def _get_nominatim_bounds(state: str, district: str = None) -> dict | None:
+    """
+    Resolve an Indian state + optional district to geocoordinates via Nominatim.
+    Strategy (tried in order until one succeeds):
+      1. Canonical spelling + structured Nominatim lookup (most reliable)
+      2. Canonical spelling + free-text "District, State, India"
+      3. Original (user-typed) spelling + free-text — catches weird place forms
+      4. State-only fallback (if district was given) — gives a broader search area
+    """
+    canonical_state = _normalize_state(state)
+    print(f"Auto Search Geocoding: district={district!r}, state_raw={state!r}, state_canonical={canonical_state!r}")
+
+    attempts = []
+
+    if district:
+        # Strategy 1 — structured Nominatim (most precise)
+        attempts.append({
+            'label': f'structured({district}, {canonical_state})',
+            'structured': {'city': district, 'state': canonical_state, 'country': 'India'},
+        })
+        attempts.append({
+            'label': f'structured county({district}, {canonical_state})',
+            'structured': {'county': district, 'state': canonical_state, 'country': 'India'},
+        })
+        # Strategy 2 — canonical free-text
+        attempts.append({
+            'label': f'free-text canonical({district}, {canonical_state}, India)',
+            'q': f"{district}, {canonical_state}, India",
+        })
+        # Strategy 3 — user-typed free-text (sometimes catches vernacular spellings)
+        if state.strip().lower() != canonical_state.lower():
+            attempts.append({
+                'label': f'free-text original({district}, {state}, India)',
+                'q': f"{district}, {state}, India",
+            })
+        # Strategy 4 — state-only fallback
+        attempts.append({
+            'label': f'state-only fallback ({canonical_state})',
+            'q': f"{canonical_state}, India",
+        })
+    else:
+        attempts.append({
+            'label': f'state structured({canonical_state})',
+            'structured': {'state': canonical_state, 'country': 'India'},
+        })
+        attempts.append({
+            'label': f'state free-text({canonical_state})',
+            'q': f"{canonical_state}, India",
+        })
+        if state.strip().lower() != canonical_state.lower():
+            attempts.append({
+                'label': f'state original({state})',
+                'q': f"{state}, India",
+            })
+
+    for attempt in attempts:
+        print(f"  [Geocode] Trying: {attempt['label']}")
+        result = _nominatim_query(
+            attempt.get('q', ''),
+            structured_params=attempt.get('structured'),
+        )
+        if result:
+            print(f"  [Geocode] ✓ Resolved → {result['display_name'][:80]}…")
+            return result
+
+    print(f"  [Geocode] ✗ All strategies exhausted — could not locate '{district or ''} {state}'")
+    return None
 
 
 def agent_auto_search(
@@ -119,8 +248,22 @@ def agent_auto_search(
     else:
         center_data = _get_nominatim_bounds(state, district)
         if not center_data:
+            canonical_state = _normalize_state(state)
+            hint = ""
+            if canonical_state.lower() != state.strip().lower():
+                hint = f"\n\n> **Tip:** Did you mean **{canonical_state}**? The canonical spelling has been tried but no result was found for district **'{district}'** within it. Please verify the district name spelling."
+            else:
+                hint = f"\n\n> **Tip:** Check that **'{district or state}'** is spelled correctly. Example: `Mungeli` is a district in `Chhattisgarh`."
             return {
-                'report': f"**Error:** Could not locate '{district or ''} {state}' via OSM Geocoding. Please check the spelling.",
+                'report': (
+                    f"## ⚠️ Location Not Found\n\n"
+                    f"Could not geocode **'{district or ''} {state}'** via OSM Nominatim after trying multiple strategies.\n"
+                    f"{hint}\n\n"
+                    f"**What to try:**\n"
+                    f"- Use the state dropdown and district dropdown in the UI for accurate selection\n"
+                    f"- Double-check the district name against official state district lists\n"
+                    f"- Try the state name only (leave district blank) to search the whole state"
+                ),
                 'candidates': [],
                 'search_center': {}
             }
@@ -159,7 +302,7 @@ def agent_auto_search(
         route = estimate_transmission_route(c['lat'], c['lon'], sub.get('lat'), sub.get('lon'))
         return {**c, 'substation': sub, 'transmission': route}
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         enriched = list(executor.map(enrich_candidate, raw_candidates))
 
     # Step 3: Build Gemini prompt
@@ -196,16 +339,17 @@ def agent_auto_search(
     est_capex = capacity_mw * 1000000 * 0.75 # ~$0.75/W utility solar
 
     prompt = f"""
-You are an expert renewable energy developer's GIS analyst. A client has requested an automated site screening report for a **{project_label} project** with the following parameters:
+# Grid & Site Screening Investment Report
+**Generated On:** {current_time_str} | **Target Region:** {location_name}
 
-- **Report Generated On**: {current_time_str}
+You are a **Technical Commercial Engineer** conducting an automated M&A screening for a **{project_label} project**. Your objective is to provide a highly detailed, engineering-grade, non-generic feasibility assessment. Provide granular commentary on topographical challenges, transmission routing complexities, and civil CAPEX estimates. 
+
 - **Project Type**: {project_label}
 - **Target Capacity**: {capacity_mw} MW
 - **Minimum Area Required**: {area_acres} acres per site
 - **Search Region**: {location_name}
 - **Resolved Centre Point**: {center_lat}°N, {center_lon}°E
 - **Search Radius Assessed**: {radius_km} km
-- **Preferred Substation** (if any): {substation_query or 'No preference — nearest substation used'}
 
 Our GIS engine has algorithmically screened the entire search area and identified {len(enriched)} candidate sites. The scoring methodology weights: Slope (30%), Land Cover (25%), {resource_label} Resource (25%), Environmental Protection Status (20%).
 
@@ -215,40 +359,37 @@ Our GIS engine has algorithmically screened the entire search area and identifie
 |------|-------------|-------|-------|-----------|----------|--------------------|----------|-----------|---------| 
 {site_table}
 
-**YOUR TASK — Generate a professional "Auto Site Screening Report" with the following structure:**
+**YOUR TASK — Generate a highly professional, PDF-ready "Investment Screening Report" with the following structure:**
 
-## 🎯 Executive Summary
-Briefly summarise the screening outcome, how many viable sites were found and the general suitability of the region.
+### 1. Regional Investment Thesis
+Provide a brief summary of the screening outcome. Is this region highly investable, conditionally viable, or too risky based on the number of viable sites found, resource averages, and grid density?
 
-## 💰 Financial Viability Overview
-Use the provided capacity and these mathematical projections to summarize the financial scale of the developer's target project:
-- **Estimated Annual Yield**: ~{int(est_annual_generation_mwh):,} MWh/year (assuming 15% system efficiency and the region's {avg_ghi:.2f} kWh/m²/day average).
+### 2. Base Financial Estimates
+Use the provided capacity to summarize the financial scale of the developer's target project:
+- **Estimated Annual Yield**: ~{int(est_annual_generation_mwh):,} MWh/year (assuming 15% system efficiency and {avg_ghi:.2f} kWh/m²/day average).
 - **Estimated Generic CAPEX**: ~${int(est_capex):,} USD (assuming industry average $0.75/W utility-scale).
-Provide brief comments on how the identified terrain difficulty or transmission line lengths might increase this baseline CAPEX.
+Discuss how the identified transmission line lengths might trigger CAPEX blowouts.
 
-## 🏆 Top 3 Recommended Sites
+### 3. Top 3 Bankable Sites
 For each of the top 3 ranked sites provide a dedicated sub-section with:
 - **Location**: Coordinates
 - **Score**: X/100
-- **Nearest Substation**: **[State the exact substation name from the data]** — distance in km
-- **Why recommended**: Specific data-driven justifications (slope, land type, resource value)
-- **Key advantage**: The single biggest strength
-- **Key risk**: The most significant challenge
-- **Power Evacuation Route**: Specific commentary on the named substation, estimated Tx line length, and terrain difficulty
+- **Nearest Substation**: **[Exact substation name]** — distance in km
+- **Investment Rationale**: Specific data-driven justifications (slope, land type, resource value)
+- **Primary Upside**: The single biggest strength
+- **Deal-Breaker Risk**: The most significant challenge that could halt the project
+- **Grid Evacuation CAPEX Impact**: Commentary on the named substation, estimated Tx line length, and terrain difficulty
 
-## 📊 Full Candidate Comparison Table
-Re-present the data table above with an added "Recommendation" column (Highly Recommended / Recommended / Conditional / Not Recommended).
+### 4. Portfolio Risk Matrix
+Identify and assess the overarching risks across the candidates in a Markdown table: **Risk Factor** | **Observation** | **Mitigation Strategy**. Include categories like Topography Risk, Grid Curtailment/Delay Risk, and Environmental/ESG Risk.
 
-## ⚡ Power Evacuation Strategy
-List each unique substation identified in the candidate data by name. Discuss the overall grid infrastructure in this search area, typical Tx voltage levels needed for {capacity_mw} MW, and which named substation(s) are most strategically valuable for power evacuation.
+### 5. Candidate Investment Matrix
+Re-present the data table above with an added "Investment Rating" column (Core / Value-Add / Opportunistic / Pass).
 
-## 🛣️ Transmission Routing Observations
-Highlight any terrain challenges or opportunities for the transmission corridors identified.
+### 6. Due Diligence Action Plan
+Provide a numbered list of 5–7 specific next steps for the deal team (ground-truthing, regulatory checks, interconnection feasibility studies, etc.).
 
-## 📋 Next Steps for Due Diligence
-Provide a numbered list of 5–7 specific next steps (ground-truthing, regulatory checks, grid connectivity studies, substation capacity confirmation etc.).
-
-Be highly specific, data-driven, and professional. Always refer to substations by their exact names from the data.
+Be highly specific, data-driven, and professional. Use clean Markdown tables and bold KPIs.
 """
 
     if past_feedback:
@@ -256,13 +397,43 @@ Be highly specific, data-driven, and professional. Always refer to substations b
         prompt += f"\n\n### CRITICAL AI MEMORY: PAST HUMAN EXPERT FEEDBACK (RAG)\nWhen screening these sites, you MUST adhere to the following human-verified rules and past corrections if they apply to the current context:\n{feedback_str}\nExplicitly mention in the report how this past expert feedback influenced your recommendations."
 
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[prompt],
-        )
-        report = response.text
+        import time
+        max_retries = 4
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    print(f"Agent: Retrying report generation (attempt {attempt+1}/{max_retries})...")
+
+                response = client.chat.completions.create(
+                    model='gpt-4o-mini',
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                report = f"![Auxilium Logo](/auxilium-logo.svg)\n\n" + response.choices[0].message.content
+                break
+            except Exception as e:
+                err_str = str(e)
+                if ("503" in err_str or "429" in err_str) and attempt < max_retries - 1:
+                    import re
+                    match = re.search(r'retry in (\d+(?:\.\d+)?)s', err_str)
+                    wait_time = int(float(match.group(1))) + 2 if match else 3 ** attempt
+                    if wait_time > 15:
+                        raise e
+                    print(f"OpenAI API error ({err_str[:40]}), retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise e
     except Exception as e:
-        report = f"Error generating AI report: {e}"
+        import re
+        err_str = str(e)
+        if "429" in err_str:
+            match = re.search(r'retry in (\d+(?:\.\d+)?)s', err_str)
+            delay = int(float(match.group(1))) + 1 if match else 60
+            report = f"### ⏳ OpenAI API Rate Limit Reached\n\nThe AI provider's free-tier token quota has momentarily been exceeded. \n\n**Action required: Please wait ~{delay} seconds** and click Auto Search again."
+        elif "503" in err_str:
+            report = f"### 🌐 OpenAI API Server Overloaded\n\nThe OpenAI backend servers are currently experiencing global high demand (503 error).\n\nSpikes are usually temporary. **Action required: Please wait 10-20 seconds** and click Auto Search again."
+        else:
+            report = f"Error generating AI report: {e}"
 
     return {
         'report': report,

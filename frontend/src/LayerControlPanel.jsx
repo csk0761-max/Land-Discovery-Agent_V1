@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Layers, Eye, EyeOff, FileText, Loader, Camera, X } from 'lucide-react';
+import { apiUrl } from './api';
 import './LayerControlPanel.css';
 
 const AVAILABLE_LAYERS = [
@@ -94,7 +95,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
         setLayerStates(prev => ({ ...prev, [layerId]: { ...prev[layerId], loading: true, error: null } }));
         try {
             const params = new URLSearchParams({ lat, lon, area_acres: area });
-            const res = await fetch(`http://localhost:8000/layers/${layerId}/tile-url?${params}`);
+            const res = await fetch(apiUrl(`/layers/${layerId}/tile-url?${params}`));
             const data = await res.json();
             if (!res.ok || data.detail) throw new Error(data.detail || 'Failed to load layer');
             setLayerStates(prev => {
@@ -128,7 +129,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
         setLayerStates(prev => ({ ...prev, [layerId]: { ...prev[layerId], inReport: true, thumbLoading: true } }));
         try {
             const params = new URLSearchParams({ lat, lon, area_acres: area });
-            const res = await fetch(`http://localhost:8000/layers/${layerId}/thumbnail?${params}`);
+            const res = await fetch(apiUrl(`/layers/${layerId}/thumbnail?${params}`));
             const data = await res.json();
             if (!res.ok || data.detail) throw new Error(data.detail || 'Failed to fetch thumbnail');
             setLayerStates(prev => {
@@ -139,7 +140,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
                 notifyParent(updated);
                 return updated;
             });
-        } catch (err) {
+        } catch {
             // Still mark in report, just without thumbnail
             setLayerStates(prev => {
                 const updated = { ...prev, [layerId]: { ...prev[layerId], inReport: true, thumbLoading: false, thumbnailUrl: null } };
@@ -157,7 +158,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
             <div className="layer-panel-header" onClick={() => setIsOpen(!isOpen)}>
                 <div className="layer-panel-title">
                     <Layers size={18} color="var(--primary)" />
-                    <span>GEE Data Layers</span>
+                    <span>Map layers</span>
                     <div className="layer-badges">
                         {activeCount > 0 && <span className="badge-active-count">{activeCount} live</span>}
                         {reportCount > 0 && <span className="badge-report-count">{reportCount} in report</span>}
@@ -169,8 +170,8 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
             {isOpen && (
                 <div className="layer-list">
                     <p className="layer-list-hint">
-                        <Eye size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> Toggle map overlay.&nbsp;
-                        <FileText size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> Include in AI report with snapshot.
+                        <Eye size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> Show on map.&nbsp;
+                        <FileText size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> Add to report with snapshot.
                     </p>
                     {AVAILABLE_LAYERS.map(layer => {
                         const state = layerStates[layer.id];
@@ -190,7 +191,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
                                             className={`layer-report-btn ${state.inReport ? 'active' : ''}`}
                                             onClick={() => toggleInReport(layer.id)}
                                             disabled={state.thumbLoading}
-                                            title={state.inReport ? 'Remove from AI Report' : 'Add to AI Report with map snapshot'}
+                                            title={state.inReport ? 'Remove from report' : 'Add to report with map snapshot'}
                                         >
                                             {state.thumbLoading ? (
                                                 <Loader size={13} className="spin-icon" />
@@ -204,7 +205,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
                                             className={`layer-toggle-btn ${state.active ? 'active' : ''}`}
                                             onClick={() => toggleLayer(layer.id)}
                                             disabled={state.loading}
-                                            title={state.active ? 'Hide from map' : 'Show on map'}
+                                            title={state.active ? 'Hide layer' : 'Show layer'}
                                         >
                                             {state.loading ? (
                                                 <Loader size={13} className="spin-icon" />
@@ -236,7 +237,7 @@ export default function LayerControlPanel({ lat, lon, area, onLayersChange }) {
                                 {state.inReport && state.thumbLoading && (
                                     <div className="layer-thumbnail-loading">
                                         <Loader size={14} className="spin-icon" />
-                                        <span>Capturing map snapshot from GEE…</span>
+                                        <span>Capturing open-data snapshot…</span>
                                     </div>
                                 )}
                             </div>

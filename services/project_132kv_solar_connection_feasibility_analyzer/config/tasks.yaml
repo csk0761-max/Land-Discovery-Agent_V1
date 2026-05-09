@@ -1,0 +1,145 @@
+---
+scrape_132kv_substation_data:
+  description: |-
+    Search and scrape comprehensive data specifically about 132kV government substations in {state} from official sources. Focus on finding:
+
+    **132kV-Specific Parameters:**
+    - Complete list of all 132kV substations with precise locations
+    - Transformer ratings and configurations (132/33kV, 132/11kV)
+    - Bay availability and spare feeders for new connections
+    - Current load percentages and available headroom capacity
+    - Incoming and outgoing line details and loadings
+    - Protection system configurations and spare bay provisions
+
+    **Connection-Ready Infrastructure:**
+    - Available spare bays for solar project connections
+    - Distance to load centers and industrial consumers
+    - Grid evacuation capacity through 132kV lines
+    - Substation expansion potential and land availability
+
+    Search government websites including State Electricity Board, CSPTCL portals, and Energy Department databases. Focus exclusively on 132kV voltage level infrastructure suitable for solar projects in the 10-50MW range.
+  expected_output: "A comprehensive dataset of all 132kV substations in {state} including:\n-
+    Substation names, exact locations, and GPS coordinates\n- Transformer capacities
+    (MVA ratings) and current loading\n- Available spare bays and connection points\n-
+    132kV line details and evacuation capacity  \n- Current utilization percentages
+    and headroom availability\n- Infrastructure readiness scores for solar project
+    connections\n- Technical specifications optimized for 10-50MW solar integration"
+  agent: medium_voltage_substation_data_specialist
+analyze_132kv_infrastructure_development_plans:
+  description: |-
+    Comprehensively analyze CSPTCL official websites, e-tender portals, and government announcements specifically for 132kV infrastructure development:
+
+    **132kV Expansion Projects:**
+    - Bay addition projects at existing 132kV substations
+    - New 132kV substations under construction or planning
+    - 132kV line extensions and network strengthening
+    - Transformer capacity augmentation (132/33kV, 132/11kV)
+
+    **Active 132kV Tenders:**
+    - Bay construction contracts and timeline
+    - Protection system upgrades for new connections
+    - 132kV switchyard expansion projects
+    - Line construction contracts affecting evacuation capacity
+
+    **Future 132kV Development:**
+    - Announced network expansion projects
+    - Load growth projections requiring new 132kV infrastructure
+    - Industrial corridor development affecting 132kV substations
+
+    Extract timeline information, planned capacities, and solar connection opportunities specifically at 132kV level.
+  expected_output: |-
+    A detailed 132kV infrastructure development report containing:
+    - List of 132kV substations with expansion projects and current status
+    - Bay addition timelines and new connection opportunities
+    - Planned capacity additions specific to 132kV level
+    - Tender status for 132kV infrastructure projects
+    - Expected completion dates for 132kV expansion projects
+    - Impact assessment on future solar project connection opportunities at 132kV
+    - Categorized status: "Bay Addition in Progress", "New 132kV Substation", "Line Expansion", "Recently Commissioned"
+  agent: medium_voltage_infrastructure_tracker
+analyze_132kv_technical_connection_parameters:
+  description: |-
+    Process and analyze the 132kV substation data along with infrastructure development information to create comprehensive technical profiles optimized for solar project connections. For each 132kV substation, calculate:
+
+    **132kV-Specific Technical Analysis:**
+    - Transformer capacity utilization and available headroom
+    - Bay availability analysis and spare connection points
+    - 132kV line loading and evacuation capacity assessment
+    - Protection system compatibility for solar integration
+    - Grid stability and short-circuit strength at 132kV level
+
+    **Solar Connection Feasibility at 132kV:**
+    - Optimal connection capacity based on available infrastructure
+    - Bay modification requirements for solar connections
+    - Protection coordination requirements for solar integration
+    - Power quality considerations specific to 132kV networks
+    - Grid code compliance for 132kV solar connections
+
+    **Development-Enhanced Analysis:**
+    - Mark substations with expansion status: "Bay Addition in Progress", "New 132kV Substation", "Line Expansion"
+    - Calculate future connection opportunities post-development
+    - Assess timeline impact on solar project development schedules
+    - Evaluate both current and future 132kV connection feasibility
+
+    Create a detailed assessment focused on 132kV voltage level requirements and solar integration best practices.
+  expected_output: |-
+    A detailed 132kV technical analysis report with calculated metrics including:
+    - Available bay capacity and connection readiness scores
+    - 132kV line utilization rates and evacuation adequacy
+    - Solar integration feasibility scores (current and future)
+    - Protection system compatibility assessments
+    - Infrastructure modification requirements and costs
+    - Technical suitability ranking optimized for 132kV solar connections
+    - Grid stability and power quality analysis specific to 132kV level
+  agent: medium_voltage_grid_integration_analyst
+  context:
+  - scrape_132kv_substation_data
+  - analyze_132kv_infrastructure_development_plans
+assess_132kv_solar_project_connection_feasibility:
+  description: |-
+    Create a comprehensive, business-ready feasibility report for connecting a {solar_capacity} MW solar project specifically to 132kV substations in Chhattisgarh. Focus on 132kV-specific advantages and requirements:
+
+    **132kV Connection Analysis:**
+    - Rank 132kV substations by immediate connection readiness
+    - Assess bay availability and modification requirements
+    - Evaluate 132kV-specific connection costs and economics
+    - Analyze protection system requirements for solar integration
+    - Consider 132kV grid code compliance and technical standards
+
+    **Connection Strategy for 132kV:**
+    - Optimal project sizing for 132kV connections (typically 10-50MW)
+    - Bay sharing possibilities and dedicated connection requirements
+    - 132kV-specific regulatory approval processes
+    - Power evacuation assessment through 132kV network
+    - Grid stability and power quality considerations
+
+    **Infrastructure Development Impact:**
+    - Future connection opportunities with bay additions
+    - Timeline benefits of upcoming 132kV infrastructure projects
+    - Cost advantages of connecting to expanding 132kV substations
+
+    Present findings in clear format suitable for solar project developers focusing on 132kV voltage level opportunities.
+  expected_output: "**EXECUTIVE SUMMARY - 132kV SOLAR CONNECTION OPPORTUNITIES**\nClear
+    executive summary highlighting 132kV-specific advantages for {solar_capacity}
+    MW solar connection\n\n**IMMEDIATE 132kV CONNECTION OPTIONS (Ready Now)**\nTable
+    format with:\n- Rank | 132kV Substation Name | Available Bays | Connection Capacity
+    | Feasibility Score | 132kV-Specific Advantages\n\n**FUTURE 132kV CONNECTION OPTIONS
+    (Under Development)**  \nTable format with:\n- Rank | 132kV Substation Name |
+    Development Status | Expected Completion | New Bay Capacity | Timeline Benefits\n\n**TOP
+    3 IMMEDIATE 132kV RECOMMENDATIONS**\n1. [Substation Name]: Clear reason why it's
+    #1 choice for 132kV connection\n2. [Substation Name]: Clear reason why it's #2
+    choice for 132kV connection  \n3. [Substation Name]: Clear reason why it's #3
+    choice for 132kV connection\n\n**TOP 3 FUTURE 132kV OPPORTUNITIES**\n1. [Substation
+    Name]: Expected timeline and 132kV infrastructure benefits\n2. [Substation Name]:
+    Expected timeline and 132kV infrastructure benefits\n3. [Substation Name]: Expected
+    timeline and 132kV infrastructure benefits\n\n**132kV CONNECTION COST ESTIMATES**\n-
+    Bay modification costs and timeline\n- 132kV-specific protection system requirements\n-
+    Total connection cost range for 132kV integration\n- Regulatory approval timeline
+    for 132kV connections\n\n**132kV-SPECIFIC ADVANTAGES**\n- Technical benefits of
+    132kV connections vs other voltage levels\n- Economic advantages for projects
+    in 10-50MW range\n- Grid stability and power quality benefits\n\n**NEXT STEPS
+    FOR 132kV CONNECTION**\nClear 3-5 step action plan specific to 132kV solar project
+    development"
+  agent: medium_voltage_solar_connection_expert
+  context:
+  - analyze_132kv_technical_connection_parameters

@@ -5,8 +5,29 @@ transmission route estimation for the Auto Search Land feature.
 """
 import ee
 import math
-import overpy
+import os
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+OVERPASS_API_URL = os.getenv("AUXILIUM_OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+
+def _run_overpass_query(query: str) -> list[dict]:
+    """Helper to run Overpass queries using requests with standard headers/timeout."""
+    try:
+        response = requests.post(
+            OVERPASS_API_URL,
+            data=query,
+            headers={
+                "Content-Type": "text/plain; charset=utf-8",
+                "User-Agent": "land_discovery_agent_v1",
+            },
+            timeout=25,
+        )
+        response.raise_for_status()
+        return response.json().get("elements", [])
+    except Exception as e:
+        print(f"Overpass Error: {e}")
+        return []
 
 # Initialize Earth Engine
 try:
@@ -327,14 +348,20 @@ def score_search_area(
         s['rank'] = i + 1
 
     print(f"Auto Search: Top {len(top)} candidates identified.")
+    return top
+
+
 def _calculate_gss_capacity(voltage_str) -> int:
     """Estimates MW hosting capacity based on voltage tags from OSM."""
     if not voltage_str:
         return 50  # Default conservative estimate
     try:
-        # Handle cases like "220000;132000" or "220 kV"
-        main_v = str(voltage_str).split(';')[0].split(' ')[0]
+        # Handle cases like "220000;132000", "220 kV", or "220kV".
+        normalized = str(voltage_str).split(';')[0].strip().lower()
+        main_v = normalized.replace("kv", "").strip()
         v = float(main_v)
+        if v <= 1000:
+            v *= 1000
         if v >= 765000: return 2000
         if v >= 400000: return 1000
         if v >= 220000: return 500
@@ -346,43 +373,146 @@ def _calculate_gss_capacity(voltage_str) -> int:
         return 50
 
 def get_all_substations_in_area(lat: float, lon: float, radius_m: int) -> list:
-    """Fetches all substations in the region ONCE to avoid duplicate Overpass queries."""
-    try:
-        api = overpy.Overpass()
-        query = f"""
-        [out:json][timeout:25];
-        (
-          node["power"="substation"](around:{radius_m},{lat},{lon});
-          way["power"="substation"](around:{radius_m},{lat},{lon});
-          relation["power"="substation"](around:{radius_m},{lat},{lon});
-        );
-        out center tags;
-        """
-        result = api.query(query)
-        all_features = []
-        for node in result.nodes:
-            v_val = node.tags.get('voltage', '')
-            all_features.append({
-                'name': node.tags.get('name', 'Unnamed Substation'),
-                'lat': float(node.lat),
-                'lon': float(node.lon),
-                'voltage': v_val,
-                'capacity_mw': _calculate_gss_capacity(v_val)
-            })
-        for way in result.ways:
-            if hasattr(way, 'center_lat') and way.center_lat:
-                v_val = way.tags.get('voltage', '')
-                all_features.append({
-                    'name': way.tags.get('name', 'Unnamed Substation'),
-                    'lat': float(way.center_lat),
-                    'lon': float(way.center_lon),
-                    'voltage': v_val,
-                    'capacity_mw': _calculate_gss_capacity(v_val)
-                })
-        return all_features
-    except Exception as e:
-        print(f"Error fetching bulk substations: {e}")
+    """
+    Fetches nearby substations using Google Places or Overpass.
+
+    If no substations are found within the requested radius, progressively widens
+    the search so the scan still returns the nearest available GSS candidates.
+    """
+    radius_m = max(1000, int(radius_m or 0))
+    search_radii = [radius_m]
+    for candidate in (radius_m * 2, radius_m * 4, 200000):
+        if candidate not in search_radii:
+            search_radii.append(candidate)
+
+    google_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    google_queries = [
+        "substation",
+        "electric substation",
+        "electrical substation",
+        "power substation",
+        "gss",
+        "grid substation",
+    ]
+
+    def _dedupe_sort(features: list[dict]) -> list[dict]:
+        seen = set()
+        unique = []
+        for feature in features:
+            key = (
+                round(float(feature["lat"]), 5),
+                round(float(feature["lon"]), 5),
+                str(feature.get("name", "")).strip().lower(),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(feature)
+        unique.sort(key=lambda item: _haversine(lat, lon, item["lat"], item["lon"]))
+        return unique
+
+    def _fetch_google(radius: int) -> list[dict]:
+        if not google_key:
+            return []
+        try:
+            all_features = []
+            print(
+                f"Backend: Bulk fetching substations via Google Places API around ({lat}, {lon}) "
+                f"with radius {radius}m..."
+            )
+            for query in google_queries:
+                url = (
+                    "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+                    f"?location={lat},{lon}&radius={radius}&keyword={requests.utils.quote(query)}&key={google_key}"
+                )
+                response = requests.get(url, timeout=15)
+                data = response.json()
+                status = data.get("status")
+                if status not in {"OK", "ZERO_RESULTS"}:
+                    print(f"Backend: Google Places query '{query}' returned status {status}.")
+                    continue
+
+                query_features = []
+                for place in data.get("results", []):
+                    loc = place.get("geometry", {}).get("location", {})
+                    if loc.get("lat") is None or loc.get("lng") is None:
+                        continue
+                    query_features.append({
+                        "name": place.get("name", "Unnamed Substation"),
+                        "lat": float(loc.get("lat")),
+                        "lon": float(loc.get("lng")),
+                        "voltage": "Unknown (Google API)",
+                        "capacity_mw": 50,
+                        "source": f"google:{query}",
+                    })
+
+                if query_features:
+                    print(f"Backend: Google Places query '{query}' returned {len(query_features)} features.")
+                    all_features.extend(query_features)
+
+            if all_features:
+                print(f"Backend: Google Places returned {len(all_features)} total features across all queries.")
+                return all_features
+        except Exception as e:
+            print(f"Backend: Google Places error: {e}")
         return []
+
+    def _fetch_overpass(radius: int) -> list[dict]:
+        try:
+            print(f"Backend: Bulk fetching substations via Overpass around ({lat}, {lon}) with radius {radius}m...")
+            query = f"""
+            [out:json][timeout:30];
+            (
+              node["power"="substation"](around:{radius},{lat},{lon});
+              way["power"="substation"](around:{radius},{lat},{lon});
+              relation["power"="substation"](around:{radius},{lat},{lon});
+            );
+            out center tags;
+            """
+            elements = _run_overpass_query(query)
+            print(f"Backend: Bulk Overpass query returned {len(elements)} features.")
+            all_features = []
+            for element in elements:
+                el_lat = element.get("lat") or element.get("center", {}).get("lat")
+                el_lon = element.get("lon") or element.get("center", {}).get("lon")
+                if el_lat is None or el_lon is None:
+                    continue
+                tags = element.get("tags", {})
+                v_val = tags.get('voltage', '')
+                all_features.append({
+                    'name': tags.get('name', 'Unnamed Substation'),
+                    'lat': float(el_lat),
+                    'lon': float(el_lon),
+                    'voltage': v_val,
+                    'capacity_mw': _calculate_gss_capacity(v_val),
+                    'source': 'osm'
+                })
+            return all_features
+        except Exception as e:
+            print(f"Error fetching bulk substations: {e}")
+            return []
+
+    all_features = []
+    # Try multiple radii but AGGREGATE results instead of breaking immediately
+    for radius in search_radii:
+        # Cap radius for Google Places (max 50,000m)
+        google_radius = min(radius, 50000)
+        google_features = _fetch_google(google_radius)
+        if google_features:
+            all_features.extend(google_features)
+        
+        overpass_features = _fetch_overpass(radius)
+        if overpass_features:
+            all_features.extend(overpass_features)
+            
+        # If we have a decent number of features, we can stop widening
+        if len(all_features) >= 5:
+            break
+
+    if not all_features:
+        return []
+
+    return _dedupe_sort(all_features)
 
 # ---------------------------------------------------------------------------
 # Substation Finder: Returns substation with full coords
@@ -396,9 +526,9 @@ def get_candidate_substation(lat: float, lon: float, preferred_name: str = None,
         if pre_fetched_subs is not None:
             all_features = pre_fetched_subs
         else:
-            api = overpy.Overpass()
+            print(f"Backend: Searching for candidate substation within {radius_m}m of ({lat}, {lon})...")
             query = f"""
-            [out:json][timeout:5];
+            [out:json][timeout:10];
             (
               node["power"="substation"](around:{radius_m},{lat},{lon});
               way["power"="substation"](around:{radius_m},{lat},{lon});
@@ -406,22 +536,23 @@ def get_candidate_substation(lat: float, lon: float, preferred_name: str = None,
             );
             out center tags;
             """
-            result = api.query(query)
+            elements = _run_overpass_query(query)
+            print(f"Backend: Substation query returned {len(elements)} features.")
 
             all_features = []
-            for node in result.nodes:
+            for element in elements:
+                el_lat = element.get("lat") or element.get("center", {}).get("lat")
+                el_lon = element.get("lon") or element.get("center", {}).get("lon")
+                if el_lat is None or el_lon is None:
+                    continue
+                tags = element.get("tags", {})
                 all_features.append({
-                    'name': node.tags.get('name', 'Unnamed Substation'),
-                    'lat': float(node.lat),
-                    'lon': float(node.lon),
+                    'name': tags.get('name', 'Unnamed Substation'),
+                    'lat': float(el_lat),
+                    'lon': float(el_lon),
+                    'voltage': tags.get('voltage', ''),
+                    'capacity_mw': _calculate_gss_capacity(tags.get('voltage', ''))
                 })
-            for way in result.ways:
-                if hasattr(way, 'center_lat') and way.center_lat:
-                    all_features.append({
-                        'name': way.tags.get('name', 'Unnamed Substation'),
-                        'lat': float(way.center_lat),
-                        'lon': float(way.center_lon),
-                    })
 
         best = None
         best_dist = float('inf')
